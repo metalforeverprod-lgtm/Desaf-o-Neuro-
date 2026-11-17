@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>NeuroTracker Elite - Desafío Exclusivo</title>
+    <style>
+        :root { --green: #28a745; --red: #dc3545; --yellow: #ffc107; --blue: #007bff; }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: #000; overflow: hidden; color: white;
+            font-family: 'Segoe UI', Tahoma, sans-serif; touch-action: none;
+        }
+        /* PANTALLA DE ACCESO / BLOQUEO */
+        .overlay-screen {
+            position: absolute; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; background: #000; z-index: 100; text-align: center;
+            padding: 20px; box-sizing: border-box;
+        }
+        .card {
+            background: #111; padding: 30px; border-radius: 30px;
+            border: 2px solid #333; text-align: center; width: 90%; max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        h1 { color: var(--yellow); font-size: 1.8rem; margin-bottom: 10px; }
+        p { color: #aaa; font-size: 1rem; margin-bottom: 20px; }
+        input[type="text"] {
+            width: 100%; padding: 15px; margin-bottom: 20px;
+            background: #222; border: 1px solid #444; border-radius: 10px;
+            color: white; font-size: 1.1rem; text-align: center; box-sizing: border-box;
+        }
+        .btn-main {
+            width: 100%; padding: 18px; background: var(--green);
+            border: none; border-radius: 15px; font-size: 1.3rem;
+            font-weight: bold; color: white; cursor: pointer; transition: 0.2s;
+        }
+        .btn-main:active { transform: scale(0.98); }
+        
+        /* HUD DEL JUEGO */
+        #hud {
+            position: absolute; top: 20px; width: 100%;
+            display: flex; justify-content: space-around;
+            font-size: 1.4rem; font-weight: bold; pointer-events: none; z-index: 10;
+        }
+        #status-msg {
+            position: absolute; top: 70px; width: 100%;
+            text-align: center; font-size: 1.1rem; color: #888; z-index: 10;
+        }
+        /* OVERLAY DE PAUSA */
+        #pause-menu {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 200;
+            flex-direction: column; justify-content: center; align-items: center;
+        }
+        .btn-pause {
+            width: 200px; padding: 15px; margin: 10px; border: none;
+            border-radius: 10px; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+        }
+        #btn-resume { background: var(--green); color: white; }
+        #btn-exit { background: var(--red); color: white; }
+        
+        /* BOTÓN VALIDAR */
+        #btn-check {
+            display: none; position: absolute; bottom: 40px; left: 50%;
+            transform: translateX(-50%); padding: 16px 35px;
+            background: var(--blue); color: white; border: none;
+            border-radius: 50px; font-size: 1.1rem; font-weight: bold; z-index: 20;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.4);
+        }
+        canvas { display: block; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. PANTALLA DE EXPIRACIÓN (7 DÍAS) -->
+    <div id="expired-screen" class="overlay-screen hidden">
+        <div class="card">
+            <h1 style="color: var(--red);">DESAFÍO FINALIZADO</h1>
+            <p>Este acceso exclusivo de 7 días ha expirado.</p>
+            <p style="color: var(--yellow); font-size: 0.9rem;">¡Seguime en Instagram para enterarte de los próximos entrenamientos!</p>
+            <a href="https://instagram.com" target="_blank" style="text-decoration: none;">
+                <button class="btn-main" style="background: var(--blue);">IR A INSTAGRAM</button>
+            </a>
+        </div>
+    </div>
+
+    <!-- 2. PANTALLA DE REGISTRO DE INSTAGRAM -->
+    <div id="ig-gate" class="overlay-screen">
+        <div class="card">
+            <h1>NEURO TRACKER</h1>
+            <p>Ingresá tu usuario de Instagram para desbloquear el acceso al desafío.</p>
+            <input type="text" id="ig-user" placeholder="@tu.usuario" autocomplete="off">
+            <button class="btn-main" onclick="validateAndStart()">INGRESAR AL JUEGO</button>
+        </div>
+    </div>
+
+    <!-- 3. MENÚ INTERNO DEL JUEGO -->
+    <div id="menu" class="overlay-screen hidden">
+        <div class="card">
+            <h1>¡LISTO, <span id="user-title" style="color:var(--blue)"></span>!</h1>
+            <p>Entrenamiento de Seguimiento de Objetos Múltiples</p>
+            <button class="btn-main" onclick="startNeuroGame()">COMENZAR</button>
+        </div>
+    </div>
+
+    <!-- PAUSA -->
+    <div id="pause-menu">
+        <h2 style="color:var(--yellow); font-size: 2.5rem; margin-bottom: 20px;">PAUSA</h2>
+        <button id="btn-resume" class="btn-pause" onclick="togglePause()">CONTINUAR</button>
+        <button id="btn-exit" class="btn-pause" onclick="exitToMenu()">SALIR</button>
+    </div>
+
+    <!-- HUD Y JUEGO -->
+    <div id="hud" class="hidden">
+        <div>NIVEL: <span id="lvl-display">1</span></div>
+        <div>SEL: <span id="hits-display">0/3</span></div>
+    </div>
+    <div id="status-msg"></div>
+    
+    <button id="btn-check" onclick="checkResults()">VERIFICAR SELECCIÓN</button>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // CONFIGURACIÓN DE TIEMPO (Duración exacta: 7 días desde la fecha de activación)
+        // Podés cambiar '2026-12-31' por la fecha límite real en la que querés que baje el acceso.
+        const FECHA_INICIO = new Date('2026-03-01'); // Fecha en que publicás el link
+        const DIAS_VALidez = 7;
+        
+        const fechaExp = new Date(FECHA_INICIO);
+        fechaExp.setDate(fechaExp.getDate() + DIAS_VALidez);
+
+        if (new Date() > fechaExp) {
+            document.getElementById('expired-screen').classList.remove('hidden');
+            document.getElementById('ig-gate').classList.add('hidden');
+        }
+
+        function validateAndStart() {
+            const input = document.getElementById('ig-user').value.trim();
+            if(input.length < 2) {
+                alert("Por favor ingresa tu usuario de Instagram válido.");
+                return;
+            }
+            localStorage.setItem('neuro_user', input);
+            document.getElementById('ig-gate').classList.add('hidden');
+            document.getElementById('user-title').innerText = input.toUpperCase();
+            document.getElementById('menu').classList.remove('hidden');
+        }
+
+        // LÓGICA ORIGINAL DE NEUROTRACKER ELITE V4[span_1](start_span)[span_1](end_span)
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusMsg = document.getElementById('status-msg');
+        const btnCheck = document.getElementById('btn-check');
+        const pauseMenu = document.getElementById('pause-menu');
+        
+        let balls = [];
+        let level = 1;
+        let ballSpeed = 3;
+        let gameState = 'IDLE'; 
+        let isPaused = false;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        class Ball {
+            constructor(id, isTarget) {
+                this.id = id;
+                this.r = 30;
+                this.x = Math.random() * (canvas.width - 100) + 50;
+                this.y = Math.random() * (canvas.height - 200) + 100;
+                this.vx = (Math.random() - 0.5) * ballSpeed;
+                this.vy = (Math.random() - 0.5) * ballSpeed;
+                this.isTarget = isTarget;
+                this.selected = false;
+                this.status = 'neutral';
+            }
+            draw() {
+                if(isPaused) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                
+                if (gameState === 'MEMORIZE') {
+                    ctx.fillStyle = this.isTarget ? '#ff4444' : '#ffc107';
+                } else if (gameState === 'SELECTING') {
+                    ctx.fillStyle = this.selected ? '#007bff' : '#ffc107';
+                } else if (gameState === 'FEEDBACK') {
+                    if (this.status === 'correct') ctx.fillStyle = '#28a745';
+                    else if (this.status === 'wrong') ctx.fillStyle = '#dc3545';
+                    else ctx.fillStyle = '#222';
+                } else {
+                    ctx.fillStyle = '#ffc107';
+                }
+                ctx.fill();
+                
+                if (this.status === 'wrong') {
+                    ctx.strokeStyle = "white"; ctx.lineWidth = 4;
+                    ctx.moveTo(this.x-10, this.y-10); ctx.lineTo(this.x+10, this.y+10);
+                    ctx.moveTo(this.x+10, this.y-10); ctx.lineTo(this.x-10, this.y+10);
+                    ctx.stroke();
+                }
+                ctx.closePath();
+            }
+            update() {
+                if (gameState !== 'MOVING' || isPaused) return;
+                this.x += this.vx; this.y += this.vy;
+                if (this.x - this.r < 0 || this.x + this.r > canvas.width) this.vx *= -1;
+                if (this.y - this.r < 0 || this.y + this.r > canvas.height) this.vy *= -1;
+            }
+        }
+
+        function playSound(freq, type, dur) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type; osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + dur);
+        }
+
+        function startNeuroGame() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            level = 1;
+            initLevel();
+            if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+        }
+
+        function initLevel() {
+            isPaused = false;
+            pauseMenu.style.display = 'none';
+            gameState = 'MEMORIZE';
+            statusMsg.innerText = "MEMORIZA LOS ROJOS";
+            btnCheck.style.display = 'none';
+            
+            let numBalls = 5 + Math.floor(level / 2);
+            ballSpeed = 3 + (level * 0.7);
+            balls = [];
+            for(let i=0; i<numBalls; i++) balls.push(new Ball(i, i < 3));
+            updateHUD();
+
+            setTimeout(() => {
+                if(gameState === 'MEMORIZE' && !isPaused) {
+                    gameState = 'MOVING';
+                    statusMsg.innerText = "¡MÚVENSE!";
+                    playSound(440, 'sine', 0.1);
+                    
+                    setTimeout(() => {
+                        if(gameState === 'MOVING' && !isPaused) {
+                            gameState = 'SELECTING';
+                            statusMsg.innerText = "SELECCIONA LOS 3 OBJETIVOS";
+                            btnCheck.style.display = 'block';
+                            playSound(660, 'sine', 0.2);
+                        }
+                    }, 7000);
+                }
+            }, 3000);
+        }
+
+        function checkResults() {
+            gameState = 'FEEDBACK';
+            btnCheck.style.display = 'none';
+            let correctCount = 0;
+            let selectedCount = balls.filter(b => b.selected).length;
+            balls.forEach(b => {
+                if (b.selected && b.isTarget) { b.status = 'correct'; correctCount++; }
+                else if (b.selected && !b.isTarget) { b.status = 'wrong'; }
+                else if (!b.selected && b.isTarget) { b.status = 'wrong'; }
+            });
+            if (correctCount === 3 && selectedCount === 3) {
+                statusMsg.innerText = "¡NIVEL SUPERADO!";
+                playSound(880, 'triangle', 0.3);
+                level++;
+                setTimeout(initLevel, 2000);
+            } else {
+                statusMsg.innerText = "ERROR - REINTENTANDO";
+                playSound(150, 'sawtooth', 0.4);
+                setTimeout(initLevel, 2500);
+            }
+        }
+
+        function togglePause() {
+            if (gameState === 'IDLE' || gameState === 'FEEDBACK') return;
+            isPaused = !isPaused;
+            pauseMenu.style.display = isPaused ? 'flex' : 'none';
+        }
+
+        function exitToMenu() {
+            isPaused = false;
+            gameState = 'IDLE';
+            pauseMenu.style.display = 'none';
+            document.getElementById('menu').classList.remove('hidden');
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('btn-check').style.display = 'none';
+            if(document.fullscreenElement) document.exitFullscreen();
+        }
+
+        function updateHUD() {
+            document.getElementById('lvl-display').innerText = level;
+            const sel = balls.filter(b => b.selected).length;
+            document.getElementById('hits-display').innerText = `${sel}/3`;
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (isPaused) return;
+            const touch = e.touches[0];
+            let ballTouched = false;
+            if (gameState === 'SELECTING') {
+                balls.forEach(b => {
+                    const dist = Math.sqrt((touch.clientX - b.x)**2 + (touch.clientY - b.y)**2);
+                    if (dist < b.r + 20) {
+                        b.selected = !b.selected;
+                        playSound(1000, 'sine', 0.05);
+                        updateHUD();
+                        ballTouched = true;
+                    }
+                });
+            }
+            if (!ballTouched && (gameState === 'MOVING' || gameState === 'MEMORIZE' || gameState === 'SELECTING')) {
+                togglePause();
+            }
+        });
+
+        function animate() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            balls.forEach(b => { b.update(); b.draw(); });
+            requestAnimationFrame(animate);
+        }
+        animate();
+    </script>
+</body>
+</html>
